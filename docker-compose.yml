@@ -1,0 +1,108 @@
+version: "3"
+
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: partner-htc-backend/Dockerfile
+    command: bash -c "python manage.py"
+    ports:
+      - "5012:5012"
+    depends_on:
+      - ui_forwarder
+    networks:
+      htc:
+        ipv4_address: 172.28.0.7
+
+  ui_forwarder:
+    build:
+      context: .
+      dockerfile: partner-htc-ui-forwarder/Dockerfile
+    command: bash -c "python main.py"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - migrate_db
+      - redis
+      - mosquitto
+    networks:
+      htc:
+        ipv4_address: 172.28.0.6
+
+  opc_ua_connector:
+    build:
+      context: .
+      dockerfile: opc-ua-connector/Dockerfile
+    command: bash -c "python mqtt_client/publish.py"
+
+    depends_on:
+      - mosquitto
+    networks:
+      htc:
+        ipv4_address: 172.28.0.8
+
+  migrate_db:
+    build:
+      context: .
+      dockerfile: partner-htc-backend/Dockerfile
+    command: bash -c "python migrate.py"
+    depends_on:
+      - db
+    networks:
+      htc:
+        ipv4_address: 172.28.0.5
+
+  db:
+    image: mysql:8.0
+    container_name: mysqlCon
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234567aA@
+    ports:
+      - "33060:33060"
+    volumes:
+      - "db_data:/var/lib/mysql"
+      - "./init_db.sql:/docker-entrypoint-initdb.d/1.sql"
+
+    networks:
+      htc:
+        ipv4_address: 172.28.0.4
+
+  redis:
+    image: "redis:alpine"
+    container_name: redisCon
+    command: redis-server --requirepass 1234567aA@
+    environment:
+      - REDIS_PASSWORD=1234567aA@
+    ports:
+      - "6379:6379"
+    volumes:
+      - "db_data:/var/lib/redis"
+    networks:
+      htc:
+        ipv4_address: 172.28.0.3
+
+  mosquitto:
+    image: "eclipse-mosquitto:1.6"
+    container_name: mosquittoCon
+    expose:
+        - "1883"
+        - "9001"
+    ports:
+        - "1883:1883"
+        - "9001:9001"
+    networks:
+      htc:
+          ipv4_address: 172.28.0.2
+
+volumes:
+  db_data:
+
+networks:
+  htc:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
